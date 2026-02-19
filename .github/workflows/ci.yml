@@ -97,6 +97,7 @@ jobs:
           path: dist
 
       - name: Install wheel and test dependencies
+        shell: bash
         run: |
           pip install dist/*.whl
           pip install pytest pytest-asyncio
