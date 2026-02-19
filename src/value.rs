@@ -14,7 +14,11 @@
 
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple};
+use pyo3::types::{
+    PyBool, PyDateAccess, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyString, PyTimeAccess,
+    PyTuple, timezone_utc,
+};
+use chrono::{Datelike, Timelike};
 
 use stoolap::api::ParamVec;
 use stoolap::core::Value;
@@ -52,17 +56,14 @@ pub fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
         return Ok(Value::text(&val));
     }
 
-    // Check for datetime.datetime
-    let py = obj.py();
-    let datetime_mod = py.import("datetime")?;
-    let datetime_type = datetime_mod.getattr("datetime")?;
-    if obj.is_instance(&datetime_type)? {
-        return py_datetime_to_value(obj);
+    // Check for datetime.datetime (fast downcast via C API)
+    if let Ok(dt) = obj.downcast::<PyDateTime>() {
+        return py_datetime_to_value(dt);
     }
 
     // dict/list -> JSON string
     if obj.downcast::<PyDict>().is_ok() || obj.downcast::<PyList>().is_ok() {
-        let json_mod = py.import("json")?;
+        let json_mod = obj.py().import("json")?;
         let json_str: String = json_mod.call_method1("dumps", (obj,))?.extract()?;
         return Ok(Value::json(&json_str));
     }
@@ -74,38 +75,58 @@ pub fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
 }
 
 /// Convert a Python datetime to a Stoolap Timestamp value.
-fn py_datetime_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
-    let py = obj.py();
+///
+/// Extracts components directly via PyO3's C API (no Python method calls).
+fn py_datetime_to_value(dt: &Bound<'_, PyDateTime>) -> PyResult<Value> {
+    use chrono::{NaiveDate, TimeZone, Utc};
+    use pyo3::types::PyTzInfoAccess;
 
-    // Try to get timezone-aware timestamp via .timestamp() method
-    let ts: f64 = obj.call_method0("timestamp")?.extract()?;
-    let secs = ts.floor() as i64;
-    let remaining = ts - ts.floor();
-    let nsecs = (remaining * 1_000_000_000.0).round() as u32;
+    let year = dt.get_year();
+    let month = dt.get_month() as u32;
+    let day = dt.get_day() as u32;
+    let hour = dt.get_hour() as u32;
+    let minute = dt.get_minute() as u32;
+    let second = dt.get_second() as u32;
+    let microsecond = dt.get_microsecond();
 
-    // Check if timezone-aware
-    let tzinfo = obj.getattr("tzinfo")?;
+    let tzinfo = dt.get_tzinfo();
+
     if tzinfo.is_none() {
         // Naive datetime -> treat as UTC
-        if let Some(dt) = chrono::DateTime::from_timestamp(secs, nsecs) {
-            return Ok(Value::Timestamp(dt));
+        if let Some(naive) = NaiveDate::from_ymd_opt(year, month, day)
+            .and_then(|d| d.and_hms_micro_opt(hour, minute, second, microsecond))
+        {
+            return Ok(Value::Timestamp(Utc.from_utc_datetime(&naive)));
         }
     } else {
-        // Timezone-aware -> convert to UTC via astimezone
-        let utc = py.import("datetime")?.getattr("timezone")?.getattr("utc")?;
-        let utc_dt = obj.call_method1("astimezone", (utc,))?;
-        let utc_ts: f64 = utc_dt.call_method0("timestamp")?.extract()?;
-        let utc_secs = utc_ts.floor() as i64;
-        let utc_remaining = utc_ts - utc_ts.floor();
-        let utc_nsecs = (utc_remaining * 1_000_000_000.0).round() as u32;
-        if let Some(dt) = chrono::DateTime::from_timestamp(utc_secs, utc_nsecs) {
-            return Ok(Value::Timestamp(dt));
+        // Timezone-aware -> get UTC offset and convert
+        let utc_offset = dt.call_method0("utcoffset")?;
+        if !utc_offset.is_none() {
+            let total_seconds: f64 = utc_offset.call_method0("total_seconds")?.extract()?;
+            let offset_secs = total_seconds as i64;
+
+            if let Some(naive_local) = NaiveDate::from_ymd_opt(year, month, day)
+                .and_then(|d| d.and_hms_micro_opt(hour, minute, second, microsecond))
+            {
+                // Subtract UTC offset to get UTC time
+                let naive_utc =
+                    naive_local - chrono::Duration::seconds(offset_secs);
+                return Ok(Value::Timestamp(Utc.from_utc_datetime(&naive_utc)));
+            }
         }
     }
 
-    // Fallback: store as ISO string
-    let iso: String = obj.call_method0("isoformat")?.extract()?;
-    Ok(Value::text(&iso))
+    // Fallback: use Python .timestamp() method
+    let ts: f64 = dt.call_method0("timestamp")?.extract()?;
+    let secs = ts.floor() as i64;
+    let nsecs = ((ts - ts.floor()) * 1_000_000_000.0).round() as u32;
+    match chrono::DateTime::from_timestamp(secs, nsecs) {
+        Some(result) => Ok(Value::Timestamp(result)),
+        None => {
+            let iso: String = dt.call_method0("isoformat")?.extract()?;
+            Ok(Value::text(&iso))
+        }
+    }
 }
 
 /// Convert a Stoolap Value to a Python object.
@@ -117,14 +138,24 @@ pub fn value_to_py(py: Python<'_>, val: &Value) -> PyObject {
         Value::Float(f) => f.into_pyobject(py).unwrap().to_owned().into_any().unbind(),
         Value::Text(s) => s.as_str().into_pyobject(py).unwrap().to_owned().into_any().unbind(),
         Value::Timestamp(ts) => {
-            let iso = ts.format("%Y-%m-%dT%H:%M:%S%.fZ").to_string();
-            match py
-                .import("datetime")
-                .and_then(|m| m.getattr("datetime"))
-                .and_then(|cls| cls.call_method1("fromisoformat", (iso.replace('Z', "+00:00"),)))
-            {
-                Ok(dt) => dt.unbind(),
-                Err(_) => iso.into_pyobject(py).unwrap().to_owned().into_any().unbind(),
+            let utc_tz = timezone_utc(py);
+            match PyDateTime::new(
+                py,
+                ts.year(),
+                ts.month() as u8,
+                ts.day() as u8,
+                ts.hour() as u8,
+                ts.minute() as u8,
+                ts.second() as u8,
+                ts.timestamp_subsec_micros(),
+                Some(&utc_tz),
+            ) {
+                Ok(dt) => dt.into_any().unbind(),
+                Err(_) => {
+                    // Fallback to ISO string
+                    let iso = ts.format("%Y-%m-%dT%H:%M:%S%.fZ").to_string();
+                    iso.into_pyobject(py).unwrap().to_owned().into_any().unbind()
+                }
             }
         }
         Value::Json(s) => s.as_ref().into_pyobject(py).unwrap().to_owned().into_any().unbind(),
