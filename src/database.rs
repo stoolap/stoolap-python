@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyDict, PyList, PyString};
 use std::sync::Arc;
 
 use stoolap::api::Database as ApiDatabase;
@@ -223,12 +223,15 @@ pub fn to_named_params(named: &[(String, stoolap::core::Value)]) -> stoolap::api
 /// Convert Rows iterator to a list of Python dicts.
 pub fn rows_to_dicts(py: Python<'_>, rows: stoolap::api::Rows) -> PyResult<PyObject> {
     let columns: Vec<String> = rows.columns().to_vec();
+    // Pre-allocate column names as PyString once, reuse for every row
+    let py_col_names: Vec<Bound<'_, PyString>> =
+        columns.iter().map(|c| PyString::new(py, c)).collect();
     let result = PyList::empty(py);
 
     for row_result in rows {
         let row = row_result.map_err(to_py)?;
         let dict = PyDict::new(py);
-        for (i, col) in columns.iter().enumerate() {
+        for (i, col) in py_col_names.iter().enumerate() {
             let val = match row.get_value(i) {
                 Some(v) => value_to_py(py, v),
                 None => py.None(),
@@ -248,7 +251,10 @@ pub fn first_row_to_dict(py: Python<'_>, mut rows: stoolap::api::Rows) -> PyResu
     if let Some(row_result) = rows.next() {
         let row = row_result.map_err(to_py)?;
         let dict = PyDict::new(py);
-        for (i, col) in columns.iter().enumerate() {
+        // Single row — pre-allocate column names as PyString
+        let py_col_names: Vec<Bound<'_, PyString>> =
+            columns.iter().map(|c| PyString::new(py, c)).collect();
+        for (i, col) in py_col_names.iter().enumerate() {
             let val = match row.get_value(i) {
                 Some(v) => value_to_py(py, v),
                 None => py.None(),

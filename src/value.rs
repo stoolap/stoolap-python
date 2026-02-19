@@ -14,6 +14,7 @@
 
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
+use pyo3::sync::GILOnceCell;
 use pyo3::types::{
     PyBool, PyDateAccess, PyDateTime, PyDict, PyFloat, PyInt, PyList, PyString, PyTimeAccess,
     PyTuple, timezone_utc,
@@ -22,6 +23,16 @@ use chrono::{Datelike, Timelike};
 
 use stoolap::api::ParamVec;
 use stoolap::core::Value;
+
+/// Cached `json.dumps` callable — avoids module lookup per JSON parameter.
+static JSON_DUMPS: GILOnceCell<PyObject> = GILOnceCell::new();
+
+fn get_json_dumps<'py>(py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+    let obj = JSON_DUMPS.get_or_try_init(py, || {
+        py.import("json")?.getattr("dumps").map(|f| f.unbind())
+    })?;
+    Ok(obj.bind(py).clone())
+}
 
 /// Parsed bind parameters from Python.
 pub enum BindParams {
@@ -63,8 +74,8 @@ pub fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
 
     // dict/list -> JSON string
     if obj.downcast::<PyDict>().is_ok() || obj.downcast::<PyList>().is_ok() {
-        let json_mod = obj.py().import("json")?;
-        let json_str: String = json_mod.call_method1("dumps", (obj,))?.extract()?;
+        let dumps = get_json_dumps(obj.py())?;
+        let json_str: String = dumps.call1((obj,))?.extract()?;
         return Ok(Value::json(&json_str));
     }
 
