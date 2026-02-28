@@ -37,6 +37,7 @@ from stoolap._stoolap import (
     Database,
     Transaction,
     PreparedStatement,
+    Vector,
     StoolapError,
 )
 
@@ -176,6 +177,7 @@ __all__ = [
     "Database",
     "Transaction",
     "PreparedStatement",
+    "Vector",
     "AsyncDatabase",
     "AsyncTransaction",
     "AsyncPreparedStatement",

@@ -26,6 +26,7 @@ fn _stoolap(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<database::Database>()?;
     m.add_class::<transaction::Transaction>()?;
     m.add_class::<statement::PreparedStatement>()?;
+    m.add_class::<value::PyVector>()?;
     m.add("StoolapError", m.py().get_type::<error::StoolapError>())?;
     Ok(())
 }

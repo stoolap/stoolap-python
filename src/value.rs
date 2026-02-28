@@ -24,6 +24,42 @@ use chrono::{Datelike, Timelike};
 use stoolap::api::ParamVec;
 use stoolap::core::Value;
 
+/// A vector of f32 values for similarity search.
+///
+/// Wraps a list of floats so that Stoolap stores them as a native VECTOR
+/// rather than a JSON array.
+///
+/// Usage:
+///     from stoolap import Vector
+///     v = Vector([0.1, 0.2, 0.3])
+///     db.execute("INSERT INTO t (embedding) VALUES ($1)", [v])
+#[pyclass(name = "Vector")]
+#[derive(Clone)]
+pub struct PyVector {
+    pub data: Vec<f32>,
+}
+
+#[pymethods]
+impl PyVector {
+    #[new]
+    fn new(data: Vec<f32>) -> Self {
+        PyVector { data }
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Vector({:?})", self.data)
+    }
+
+    fn __len__(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Return the vector as a Python list of floats.
+    fn to_list(&self) -> Vec<f32> {
+        self.data.clone()
+    }
+}
+
 /// Cached `json.dumps` callable — avoids module lookup per JSON parameter.
 static JSON_DUMPS: GILOnceCell<PyObject> = GILOnceCell::new();
 
@@ -70,6 +106,12 @@ pub fn py_to_value(obj: &Bound<'_, PyAny>) -> PyResult<Value> {
     // Check for datetime.datetime (fast downcast via C API)
     if let Ok(dt) = obj.downcast::<PyDateTime>() {
         return py_datetime_to_value(dt);
+    }
+
+    // Vector -> native VECTOR value
+    if let Ok(v) = obj.downcast::<PyVector>() {
+        let v: PyRef<'_, PyVector> = v.try_borrow()?;
+        return Ok(Value::vector(v.data.clone()));
     }
 
     // dict/list -> JSON string
@@ -169,7 +211,16 @@ pub fn value_to_py(py: Python<'_>, val: &Value) -> PyObject {
                 }
             }
         }
-        Value::Json(s) => s.as_ref().into_pyobject(py).unwrap().to_owned().into_any().unbind(),
+        Value::Extension(_) => {
+            if let Some(floats) = val.as_vector_f32() {
+                let list = PyList::new(py, &floats).unwrap();
+                list.into_any().unbind()
+            } else if let Some(s) = val.as_json() {
+                s.into_pyobject(py).unwrap().to_owned().into_any().unbind()
+            } else {
+                format!("{}", val).into_pyobject(py).unwrap().to_owned().into_any().unbind()
+            }
+        }
     }
 }
 
