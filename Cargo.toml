@@ -1,6 +1,6 @@
 [package]
 name = "stoolap-python"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 authors = ["Stoolap Contributors"]
 license = "Apache-2.0"
@@ -16,7 +16,7 @@ name = "_stoolap"
 crate-type = ["cdylib"]
 
 [dependencies]
-stoolap = { version = "0.3.2", default-features = false, features = ["parallel"] }
+stoolap = { version = "0.3.3", default-features = false, features = ["parallel"] }
 pyo3 = { version = "0.23", features = ["extension-module"] }
 chrono = "0.4"
 

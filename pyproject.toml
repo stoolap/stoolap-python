@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "stoolap-python"
-version = "0.3.2"
+version = "0.3.3"
 description = "High-performance Python driver for Stoolap embedded SQL database"
 readme = "README.md"
 license = { text = "Apache-2.0" }
