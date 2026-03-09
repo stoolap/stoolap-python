@@ -201,10 +201,16 @@ db = Database.open("file:///path/to/mydata?sync=none&snapshot_interval=600")
 | `compression` | `on`, `off` | `on` | Enable WAL + snapshot compression (LZ4) |
 | `wal_compression` | `on`, `off` | `on` | WAL compression only |
 | `snapshot_compression` | `on`, `off` | `on` | Snapshot compression only |
+| `compression_threshold` | bytes | `64` | Minimum data size before compression |
 | `sync_interval_ms` | milliseconds | `10` | Background sync interval |
 | `wal_buffer_size` | bytes | `65536` | WAL write buffer size |
+| `wal_flush_trigger` | bytes | `32768` | WAL size before flush |
 | `wal_max_size` | bytes | `67108864` | WAL size before forced snapshot |
 | `commit_batch_size` | count | `100` | Commits batched before flush |
+| `cleanup` | `on`, `off` | `on` | Enable background cleanup thread |
+| `cleanup_interval` | seconds | `60` | Interval between cleanup runs |
+| `deleted_row_retention` | seconds | `300` | Keep deleted rows before permanent removal |
+| `transaction_retention` | seconds | `3600` | Keep stale transaction metadata |
 
 ## Type Mapping
 
@@ -217,6 +223,71 @@ db = Database.open("file:///path/to/mydata?sync=none&snapshot_interval=600")
 | `None` | `NULL` | |
 | `datetime.datetime` | `TIMESTAMP` | Converted to/from UTC |
 | `dict` / `list` | `JSON` | Serialized via `json.dumps` |
+| `Vector` | `VECTOR(N)` | `list[float]` on output |
+
+## Vector Similarity Search
+
+Store embeddings and perform k-NN similarity search using HNSW indexes:
+
+```python
+from stoolap import Database, Vector
+
+db = Database.open(":memory:")
+
+# Create a table with a VECTOR column
+db.exec("""
+    CREATE TABLE documents (
+        id INTEGER PRIMARY KEY,
+        title TEXT,
+        embedding VECTOR(3)
+    );
+    CREATE INDEX idx_emb ON documents(embedding) USING HNSW WITH (metric = 'cosine');
+""")
+
+# Insert vectors using the Vector wrapper
+db.execute(
+    "INSERT INTO documents VALUES ($1, $2, $3)",
+    [1, "Hello world", Vector([0.1, 0.2, 0.3])],
+)
+db.execute(
+    "INSERT INTO documents VALUES ($1, $2, $3)",
+    [2, "Goodbye world", Vector([0.9, 0.1, 0.0])],
+)
+
+# k-NN search: find 5 nearest neighbors
+results = db.query(
+    "SELECT id, title, VEC_DISTANCE_COSINE(embedding, '[0.1, 0.2, 0.3]') AS dist "
+    "FROM documents ORDER BY dist LIMIT 5"
+)
+
+# Read vectors back as list[float]
+row = db.query_one("SELECT embedding FROM documents WHERE id = 1")
+emb = row["embedding"]  # [0.1, 0.2, 0.3]
+```
+
+### Distance Functions
+
+| Function | Description |
+|----------|-------------|
+| `VEC_DISTANCE_L2(a, b)` | Euclidean distance |
+| `VEC_DISTANCE_COSINE(a, b)` | Cosine distance (1 - similarity) |
+| `VEC_DISTANCE_IP(a, b)` | Negative inner product |
+
+### Vector Utilities
+
+| Function | Description |
+|----------|-------------|
+| `VEC_DIMS(v)` | Number of dimensions |
+| `VEC_NORM(v)` | L2 norm (magnitude) |
+| `VEC_TO_TEXT(v)` | Convert to string `[1.0, 2.0, 3.0]` |
+
+### HNSW Index Options
+
+```sql
+CREATE INDEX idx ON table(column) USING HNSW WITH (metric = 'cosine');
+```
+
+Supported metrics: `l2` (default), `cosine`, `ip` (inner product).
 
 ## Features
 
@@ -230,8 +301,9 @@ Stoolap is a full-featured embedded SQL database:
 - **Window functions**: ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD, NTILE
 - **CTEs**: WITH and WITH RECURSIVE
 - **Aggregations**: GROUP BY, HAVING, ROLLUP, CUBE, GROUPING SETS
-- **Indexes**: B-tree, Hash, Bitmap (auto-selected), multi-column composite
-- **110 built-in functions**: string, math, date/time, JSON, aggregate
+- **Vector similarity search** with HNSW indexes (L2, cosine, inner product)
+- **Indexes**: B-tree, Hash, Bitmap (auto-selected), HNSW, multi-column composite
+- **110+ built-in functions**: string, math, date/time, JSON, vector, aggregate
 - **WAL + snapshots** for crash recovery
 - **Semantic query caching** with predicate subsumption
 
