@@ -20,6 +20,7 @@ use stoolap::api::Transaction as ApiTransaction;
 
 use crate::database::{first_row_to_dict, rows_to_dicts, rows_to_raw, to_named_params};
 use crate::error::to_py;
+use crate::statement::PreparedStatement;
 use crate::value::{parse_params, BindParams};
 
 /// A Stoolap transaction.
@@ -179,6 +180,97 @@ impl Transaction {
                 Ok(total)
             })
         })
+    }
+
+    /// Execute a prepared statement within the transaction. Returns rows affected.
+    #[pyo3(signature = (stmt, params=None))]
+    fn execute_prepared(
+        &self,
+        py: Python<'_>,
+        stmt: &PreparedStatement,
+        params: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<i64> {
+        let bind = parse_params(params)?;
+        let plan = stmt.plan().clone();
+        let sql = stmt.sql_text().to_string();
+        py.allow_threads(|| {
+            let statement = plan.statement.as_ref();
+            self.with_tx(|tx| match bind {
+                BindParams::Positional(p) => tx.execute_prepared(statement, p).map_err(to_py),
+                BindParams::Named(named) => {
+                    tx.execute_named(&sql, to_named_params(&named)).map_err(to_py)
+                }
+            })
+        })
+    }
+
+    /// Query rows using a prepared statement within the transaction. Returns list of dicts.
+    #[pyo3(signature = (stmt, params=None))]
+    fn query_prepared(
+        &self,
+        py: Python<'_>,
+        stmt: &PreparedStatement,
+        params: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        let bind = parse_params(params)?;
+        let plan = stmt.plan().clone();
+        let sql = stmt.sql_text().to_string();
+        let rows = py.allow_threads(|| {
+            let statement = plan.statement.as_ref();
+            self.with_tx(|tx| match bind {
+                BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
+                BindParams::Named(named) => {
+                    tx.query_named(&sql, to_named_params(&named)).map_err(to_py)
+                }
+            })
+        })?;
+        rows_to_dicts(py, rows)
+    }
+
+    /// Query a single row using a prepared statement. Returns dict or None.
+    #[pyo3(signature = (stmt, params=None))]
+    fn query_one_prepared(
+        &self,
+        py: Python<'_>,
+        stmt: &PreparedStatement,
+        params: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        let bind = parse_params(params)?;
+        let plan = stmt.plan().clone();
+        let sql = stmt.sql_text().to_string();
+        let rows = py.allow_threads(|| {
+            let statement = plan.statement.as_ref();
+            self.with_tx(|tx| match bind {
+                BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
+                BindParams::Named(named) => {
+                    tx.query_named(&sql, to_named_params(&named)).map_err(to_py)
+                }
+            })
+        })?;
+        first_row_to_dict(py, rows)
+    }
+
+    /// Query rows using a prepared statement in raw format. Returns { columns: [...], rows: [[...], ...] }.
+    #[pyo3(signature = (stmt, params=None))]
+    fn query_raw_prepared(
+        &self,
+        py: Python<'_>,
+        stmt: &PreparedStatement,
+        params: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyObject> {
+        let bind = parse_params(params)?;
+        let plan = stmt.plan().clone();
+        let sql = stmt.sql_text().to_string();
+        let rows = py.allow_threads(|| {
+            let statement = plan.statement.as_ref();
+            self.with_tx(|tx| match bind {
+                BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
+                BindParams::Named(named) => {
+                    tx.query_named(&sql, to_named_params(&named)).map_err(to_py)
+                }
+            })
+        })?;
+        rows_to_raw(py, rows)
     }
 
     /// Commit the transaction.

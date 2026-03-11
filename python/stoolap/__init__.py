@@ -122,6 +122,18 @@ class AsyncTransaction:
     async def execute_batch(self, sql: str, params_list: list) -> int:
         return await asyncio.to_thread(self._tx.execute_batch, sql, params_list)
 
+    async def execute_prepared(self, stmt, params=None) -> int:
+        return await asyncio.to_thread(self._tx.execute_prepared, stmt._stmt if isinstance(stmt, AsyncPreparedStatement) else stmt, params)
+
+    async def query_prepared(self, stmt, params=None) -> list:
+        return await asyncio.to_thread(self._tx.query_prepared, stmt._stmt if isinstance(stmt, AsyncPreparedStatement) else stmt, params)
+
+    async def query_one_prepared(self, stmt, params=None):
+        return await asyncio.to_thread(self._tx.query_one_prepared, stmt._stmt if isinstance(stmt, AsyncPreparedStatement) else stmt, params)
+
+    async def query_raw_prepared(self, stmt, params=None) -> dict:
+        return await asyncio.to_thread(self._tx.query_raw_prepared, stmt._stmt if isinstance(stmt, AsyncPreparedStatement) else stmt, params)
+
     async def commit(self) -> None:
         await asyncio.to_thread(self._tx.commit)
 

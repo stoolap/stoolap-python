@@ -829,9 +829,9 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "stoolap"
-version = "0.3.4"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73e156a9b7298a352a49d3e1450a3c0968257b19a982aadee552104ac121dfd5"
+checksum = "b561f0afad5841f02e35b5bc2ac10b041b1f3f5f17d71d3ee5476af5ee4a0bfb"
 dependencies = [
  "ahash",
  "anyhow",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "stoolap-python"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "chrono",
  "pyo3",

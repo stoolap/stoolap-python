@@ -42,6 +42,14 @@ impl PreparedStatement {
             plan,
         })
     }
+
+    pub(crate) fn plan(&self) -> &CachedPlanRef {
+        &self.plan
+    }
+
+    pub(crate) fn sql_text(&self) -> &str {
+        &self.sql_text
+    }
 }
 
 #[pymethods]
