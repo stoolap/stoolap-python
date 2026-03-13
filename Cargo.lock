@@ -476,9 +476,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.21.3"
+version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
+checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "ordered-float"
@@ -829,9 +829,9 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "stoolap"
-version = "0.3.5"
+version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b561f0afad5841f02e35b5bc2ac10b041b1f3f5f17d71d3ee5476af5ee4a0bfb"
+checksum = "1279a3b55e90da04e1c3e9a5f241ac24b478223e4f76b39cfdd14929b7feaa0e"
 dependencies = [
  "ahash",
  "anyhow",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "stoolap-python"
-version = "0.3.5"
+version = "0.3.7"
 dependencies = [
  "chrono",
  "pyo3",
