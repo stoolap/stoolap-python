@@ -157,7 +157,7 @@ def test_file_persistence_batch_insert(db_dir):
 def test_file_persistence_dsn_options(db_dir):
     """DSN query parameters work for persistence config."""
     path = os.path.join(db_dir, "testdb")
-    dsn = f"file://{path}?sync=full"
+    dsn = f"file://{path}?sync_mode=full"
 
     db = Database.open(dsn)
     db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
@@ -167,6 +167,39 @@ def test_file_persistence_dsn_options(db_dir):
     db2 = Database.open(path)
     row = db2.query_one("SELECT val FROM t WHERE id = $1", [1])
     assert row["val"] == "durable"
+    db2.close()
+
+
+def test_file_persistence_checkpoint_options(db_dir):
+    """Checkpoint and compaction DSN options work."""
+    path = os.path.join(db_dir, "testdb")
+    dsn = f"file://{path}?checkpoint_interval=30&compact_threshold=2&checkpoint_on_close=on"
+
+    db = Database.open(dsn)
+    db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
+    db.execute("INSERT INTO t VALUES ($1, $2)", [1, "checkpoint_test"])
+    db.close()
+
+    db2 = Database.open(path)
+    row = db2.query_one("SELECT val FROM t WHERE id = $1", [1])
+    assert row["val"] == "checkpoint_test"
+    db2.close()
+
+
+def test_file_persistence_volume_compression(db_dir):
+    """Volume and WAL compression options work."""
+    path = os.path.join(db_dir, "testdb")
+    dsn = f"file://{path}?wal_compression=on&volume_compression=on"
+
+    db = Database.open(dsn)
+    db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
+    for i in range(50):
+        db.execute("INSERT INTO t VALUES ($1, $2)", [i, f"row_{i}"])
+    db.close()
+
+    db2 = Database.open(path)
+    rows = db2.query("SELECT COUNT(*) as cnt FROM t")
+    assert rows[0]["cnt"] == 50
     db2.close()
 
 

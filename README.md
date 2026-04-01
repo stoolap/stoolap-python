@@ -187,30 +187,29 @@ Pass options as query parameters in the DSN:
 
 ```python
 # Max durability
-db = Database.open("file:///path/to/mydata?sync=full")
+db = Database.open("file:///path/to/mydata?sync_mode=full")
 
 # Max throughput (less durable)
-db = Database.open("file:///path/to/mydata?sync=none&snapshot_interval=600")
+db = Database.open("file:///path/to/mydata?sync_mode=none&checkpoint_interval=120")
 ```
 
 | Parameter | Values | Default | Description |
 |-----------|--------|---------|-------------|
-| `sync` | `none`, `normal`, `full` | `normal` | Durability level (`full` = fsync every write) |
-| `snapshot_interval` | seconds | `300` | Auto-snapshot interval |
-| `keep_snapshots` | count | `5` | Number of snapshots to retain |
-| `compression` | `on`, `off` | `on` | Enable WAL + snapshot compression (LZ4) |
+| `sync_mode` | `none`, `normal`, `full` | `normal` | Durability level (`full` = fsync every write, `normal` = fsync every 1s) |
+| `checkpoint_interval` | seconds | `60` | Seconds between checkpoint cycles (seal + compact + WAL truncate) |
+| `compact_threshold` | count | `4` | Sub-target volumes per table before merging |
+| `target_volume_rows` | count | `1048576` | Target rows per cold volume (controls compaction split boundary) |
+| `checkpoint_on_close` | `on`, `off` | `on` | Seal all hot rows on clean shutdown for fast startup |
+| `keep_snapshots` | count | `3` | Number of backup snapshots to retain |
+| `compression` | `on`, `off` | `on` | Enable both WAL + volume compression (LZ4) |
 | `wal_compression` | `on`, `off` | `on` | WAL compression only |
-| `snapshot_compression` | `on`, `off` | `on` | Snapshot compression only |
+| `volume_compression` | `on`, `off` | `on` | Cold volume file compression only |
 | `compression_threshold` | bytes | `64` | Minimum data size before compression |
-| `sync_interval_ms` | milliseconds | `10` | Background sync interval |
 | `wal_buffer_size` | bytes | `65536` | WAL write buffer size |
 | `wal_flush_trigger` | bytes | `32768` | WAL size before flush |
-| `wal_max_size` | bytes | `67108864` | WAL size before forced snapshot |
-| `commit_batch_size` | count | `100` | Commits batched before flush |
-| `cleanup` | `on`, `off` | `on` | Enable background cleanup thread |
-| `cleanup_interval` | seconds | `60` | Interval between cleanup runs |
-| `deleted_row_retention` | seconds | `300` | Keep deleted rows before permanent removal |
-| `transaction_retention` | seconds | `3600` | Keep stale transaction metadata |
+| `wal_max_size` | bytes | `67108864` | WAL size before rotation (64 MB) |
+| `commit_batch_size` | count | `100` | Commits batched before syncing (normal mode) |
+| `sync_interval_ms` | milliseconds | `1000` | Minimum ms between syncs (normal mode) |
 
 ## Type Mapping
 
@@ -304,7 +303,9 @@ Stoolap is a full-featured embedded SQL database:
 - **Vector similarity search** with HNSW indexes (L2, cosine, inner product)
 - **Indexes**: B-tree, Hash, Bitmap (auto-selected), HNSW, multi-column composite
 - **110+ built-in functions**: string, math, date/time, JSON, vector, aggregate
-- **WAL + snapshots** for crash recovery
+- **Immutable volume-based storage** with columnar format, zone maps, bloom filters, and LZ4 compression
+- **WAL + checkpoint cycles** for crash recovery (seal + compact + WAL truncate)
+- **Aggregation pushdown** to cold volume statistics (COUNT, SUM, MIN, MAX)
 - **Semantic query caching** with predicate subsumption
 
 ## Building from Source
