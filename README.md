@@ -2,20 +2,6 @@
 
 High-performance Python driver for [Stoolap](https://stoolap.io) embedded SQL database. Built with [PyO3](https://pyo3.rs) for native Rust performance with both sync and async APIs.
 
-## Performance
-
-**53 out of 53 benchmark wins** against Python's built-in `sqlite3` on 10,000 rows:
-
-| Category | Highlights |
-|----------|-----------|
-| **Point Queries** | SELECT by ID: 1.5x, SELECT by index: 1.4-2.0x |
-| **Complex Queries** | SELECT complex: 4.8x, Scalar subquery: 19.5x |
-| **Aggregations** | GROUP BY: 24.8x, COUNT DISTINCT: 207x |
-| **Joins** | INNER JOIN: 1.1x, LEFT JOIN: 1.6x, Self JOIN: 1.3x |
-| **Subqueries** | IN subquery: 12.7x, NOT EXISTS: 42.8x, Nested 3-level: 16.3x |
-| **Window Functions** | ROW_NUMBER: 5.5x, PARTITION BY: 4.2x, ROWS frame: 2.7x |
-| **Write Operations** | DELETE complex: 133x, UPDATE complex: 6.7x |
-
 Run the benchmark yourself: `python benchmark.py`
 
 ## Installation
