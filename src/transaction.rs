@@ -192,13 +192,12 @@ impl Transaction {
     ) -> PyResult<i64> {
         let bind = parse_params(params)?;
         let plan = stmt.plan().clone();
-        let sql = stmt.sql_text().to_string();
         py.allow_threads(|| {
             let statement = plan.statement.as_ref();
             self.with_tx(|tx| match bind {
                 BindParams::Positional(p) => tx.execute_prepared(statement, p).map_err(to_py),
                 BindParams::Named(named) => {
-                    tx.execute_named(&sql, to_named_params(&named)).map_err(to_py)
+                    tx.execute_prepared_named(statement, to_named_params(&named)).map_err(to_py)
                 }
             })
         })
@@ -214,13 +213,12 @@ impl Transaction {
     ) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
         let plan = stmt.plan().clone();
-        let sql = stmt.sql_text().to_string();
         let rows = py.allow_threads(|| {
             let statement = plan.statement.as_ref();
             self.with_tx(|tx| match bind {
                 BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
                 BindParams::Named(named) => {
-                    tx.query_named(&sql, to_named_params(&named)).map_err(to_py)
+                    tx.query_prepared_named(statement, to_named_params(&named)).map_err(to_py)
                 }
             })
         })?;
@@ -237,13 +235,12 @@ impl Transaction {
     ) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
         let plan = stmt.plan().clone();
-        let sql = stmt.sql_text().to_string();
         let rows = py.allow_threads(|| {
             let statement = plan.statement.as_ref();
             self.with_tx(|tx| match bind {
                 BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
                 BindParams::Named(named) => {
-                    tx.query_named(&sql, to_named_params(&named)).map_err(to_py)
+                    tx.query_prepared_named(statement, to_named_params(&named)).map_err(to_py)
                 }
             })
         })?;
@@ -260,13 +257,12 @@ impl Transaction {
     ) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
         let plan = stmt.plan().clone();
-        let sql = stmt.sql_text().to_string();
         let rows = py.allow_threads(|| {
             let statement = plan.statement.as_ref();
             self.with_tx(|tx| match bind {
                 BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
                 BindParams::Named(named) => {
-                    tx.query_named(&sql, to_named_params(&named)).map_err(to_py)
+                    tx.query_prepared_named(statement, to_named_params(&named)).map_err(to_py)
                 }
             })
         })?;

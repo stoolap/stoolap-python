@@ -247,3 +247,40 @@ def test_named_params_with_prefix_colon():
     row = db.query_one("SELECT val FROM t WHERE id = :id", {":id": 1})
     assert row["val"] == "hello"
     db.close()
+
+
+# --- Transaction + prepared statement named params ---
+
+
+def test_tx_prepared_execute_named(db):
+    stmt = db.prepare("INSERT INTO users VALUES (:id, :name, :email)")
+    with db.begin() as tx:
+        n = tx.execute_prepared(stmt, {"id": 3, "name": "Charlie", "email": "c@example.com"})
+        assert n == 1
+    row = db.query_one("SELECT name FROM users WHERE id = :id", {"id": 3})
+    assert row["name"] == "Charlie"
+
+
+def test_tx_prepared_query_named(db):
+    stmt = db.prepare("SELECT * FROM users WHERE id = :id")
+    with db.begin() as tx:
+        rows = tx.query_prepared(stmt, {"id": 1})
+        assert len(rows) == 1
+        assert rows[0]["name"] == "Alice"
+
+        row = tx.query_one_prepared(stmt, {"id": 2})
+        assert row["name"] == "Bob"
+        assert tx.query_one_prepared(stmt, {"id": 999}) is None
+
+        raw = tx.query_raw_prepared(stmt, {"id": 1})
+        assert raw["columns"] == ["id", "name", "email"]
+        assert raw["rows"][0][1] == "Alice"
+
+
+def test_tx_prepared_named_rollback(db):
+    stmt = db.prepare("INSERT INTO users VALUES (:id, :name, :email)")
+    with pytest.raises(RuntimeError):
+        with db.begin() as tx:
+            tx.execute_prepared(stmt, {"id": 4, "name": "Dave", "email": "d@example.com"})
+            raise RuntimeError("abort")
+    assert db.query_one("SELECT * FROM users WHERE id = :id", {"id": 4}) is None
