@@ -15,7 +15,7 @@
 """Named parameter tests across all APIs."""
 
 import pytest
-from stoolap import Database, AsyncDatabase
+from stoolap import Database, AsyncDatabase, StoolapError
 
 
 @pytest.fixture
@@ -275,6 +275,19 @@ def test_tx_prepared_query_named(db):
         raw = tx.query_raw_prepared(stmt, {"id": 1})
         assert raw["columns"] == ["id", "name", "email"]
         assert raw["rows"][0][1] == "Alice"
+
+
+def test_missing_named_param_is_an_error(db):
+    with pytest.raises(StoolapError, match="named parameter :id has no value"):
+        db.query("SELECT * FROM users WHERE id = :id", {})
+
+    stmt = db.prepare("SELECT * FROM users WHERE id = :id")
+    with pytest.raises(StoolapError, match="named parameter :id has no value"):
+        stmt.query({"name": "Alice"})
+
+    with db.begin() as tx:
+        with pytest.raises(StoolapError, match="named parameter :id has no value"):
+            tx.query_prepared(stmt, {})
 
 
 def test_tx_prepared_named_rollback(db):

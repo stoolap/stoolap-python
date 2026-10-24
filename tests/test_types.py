@@ -56,14 +56,14 @@ def test_float_types():
 
 def test_text_types():
     db = Database.open(":memory:")
-    db.exec("CREATE TABLE t_text (val TEXT)")
+    db.exec("CREATE TABLE t_text (id INTEGER PRIMARY KEY, val TEXT)")
 
-    db.execute("INSERT INTO t_text VALUES ($1)", [""])
-    db.execute("INSERT INTO t_text VALUES ($1)", ["hello world"])
-    db.execute("INSERT INTO t_text VALUES ($1)", ["unicode: \u00e9\u00e0\u00fc\u00f1"])
-    db.execute("INSERT INTO t_text VALUES ($1)", ["emoji: \U0001f600"])
+    db.execute("INSERT INTO t_text VALUES ($1, $2)", [1, ""])
+    db.execute("INSERT INTO t_text VALUES ($1, $2)", [2, "hello world"])
+    db.execute("INSERT INTO t_text VALUES ($1, $2)", [3, "unicode: \u00e9\u00e0\u00fc\u00f1"])
+    db.execute("INSERT INTO t_text VALUES ($1, $2)", [4, "emoji: \U0001f600"])
 
-    rows = db.query("SELECT val FROM t_text ORDER BY rowid")
+    rows = db.query("SELECT val FROM t_text ORDER BY id")
     assert rows[0]["val"] == ""
     assert rows[1]["val"] == "hello world"
     assert rows[2]["val"] == "unicode: \u00e9\u00e0\u00fc\u00f1"
@@ -73,12 +73,12 @@ def test_text_types():
 
 def test_boolean_type():
     db = Database.open(":memory:")
-    db.exec("CREATE TABLE t_bool (val BOOLEAN)")
+    db.exec("CREATE TABLE t_bool (id INTEGER PRIMARY KEY, val BOOLEAN)")
 
-    db.execute("INSERT INTO t_bool VALUES ($1)", [True])
-    db.execute("INSERT INTO t_bool VALUES ($1)", [False])
+    db.execute("INSERT INTO t_bool VALUES ($1, $2)", [1, True])
+    db.execute("INSERT INTO t_bool VALUES ($1, $2)", [2, False])
 
-    rows = db.query("SELECT val FROM t_bool ORDER BY rowid")
+    rows = db.query("SELECT val FROM t_bool ORDER BY id")
     assert rows[0]["val"] is True
     assert rows[1]["val"] is False
     db.close()

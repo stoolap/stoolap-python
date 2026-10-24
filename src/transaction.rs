@@ -14,9 +14,9 @@
 
 use pyo3::prelude::*;
 use pyo3::types::PyList;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use stoolap::api::Transaction as ApiTransaction;
+use stoolap::api::{Database as ApiDatabase, Transaction as ApiTransaction};
 
 use crate::database::{first_row_to_dict, rows_to_dicts, rows_to_raw, to_named_params};
 use crate::error::to_py;
@@ -34,12 +34,14 @@ use crate::value::{parse_params, BindParams};
 #[pyclass]
 pub struct Transaction {
     tx: Mutex<Option<ApiTransaction>>,
+    db: Arc<ApiDatabase>,
 }
 
 impl Transaction {
-    pub fn from_tx(tx: ApiTransaction) -> Self {
+    pub fn from_tx(tx: ApiTransaction, db: Arc<ApiDatabase>) -> Self {
         Self {
             tx: Mutex::new(Some(tx)),
+            db,
         }
     }
 
@@ -163,19 +165,11 @@ impl Transaction {
 
         // Execute without GIL
         py.allow_threads(|| {
-            use stoolap::parser::Parser;
-            let mut parser = Parser::new(&sql);
-            let program = parser.parse_program().map_err(|e| {
-                crate::error::StoolapError::new_err(e.to_string())
-            })?;
-            let stmt = program.statements.first().ok_or_else(|| {
-                crate::error::StoolapError::new_err("No SQL statement found")
-            })?;
-
+            let stmt = self.db.prepare(&sql).map_err(to_py)?;
             self.with_tx(|tx| {
                 let mut total = 0i64;
                 for params in all_params {
-                    total += tx.execute_prepared(stmt, params).map_err(to_py)?;
+                    total += stmt.execute_in(tx, params).map_err(to_py)?;
                 }
                 Ok(total)
             })
@@ -191,13 +185,12 @@ impl Transaction {
         params: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<i64> {
         let bind = parse_params(params)?;
-        let plan = stmt.plan().clone();
+        let stmt = stmt.inner();
         py.allow_threads(|| {
-            let statement = plan.statement.as_ref();
             self.with_tx(|tx| match bind {
-                BindParams::Positional(p) => tx.execute_prepared(statement, p).map_err(to_py),
+                BindParams::Positional(p) => stmt.execute_in(tx, p).map_err(to_py),
                 BindParams::Named(named) => {
-                    tx.execute_prepared_named(statement, to_named_params(&named)).map_err(to_py)
+                    stmt.execute_named_in(tx, to_named_params(&named)).map_err(to_py)
                 }
             })
         })
@@ -212,13 +205,12 @@ impl Transaction {
         params: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
-        let plan = stmt.plan().clone();
+        let stmt = stmt.inner();
         let rows = py.allow_threads(|| {
-            let statement = plan.statement.as_ref();
             self.with_tx(|tx| match bind {
-                BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
+                BindParams::Positional(p) => stmt.query_in(tx, p).map_err(to_py),
                 BindParams::Named(named) => {
-                    tx.query_prepared_named(statement, to_named_params(&named)).map_err(to_py)
+                    stmt.query_named_in(tx, to_named_params(&named)).map_err(to_py)
                 }
             })
         })?;
@@ -234,13 +226,12 @@ impl Transaction {
         params: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
-        let plan = stmt.plan().clone();
+        let stmt = stmt.inner();
         let rows = py.allow_threads(|| {
-            let statement = plan.statement.as_ref();
             self.with_tx(|tx| match bind {
-                BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
+                BindParams::Positional(p) => stmt.query_in(tx, p).map_err(to_py),
                 BindParams::Named(named) => {
-                    tx.query_prepared_named(statement, to_named_params(&named)).map_err(to_py)
+                    stmt.query_named_in(tx, to_named_params(&named)).map_err(to_py)
                 }
             })
         })?;
@@ -256,13 +247,12 @@ impl Transaction {
         params: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
-        let plan = stmt.plan().clone();
+        let stmt = stmt.inner();
         let rows = py.allow_threads(|| {
-            let statement = plan.statement.as_ref();
             self.with_tx(|tx| match bind {
-                BindParams::Positional(p) => tx.query_prepared(statement, p).map_err(to_py),
+                BindParams::Positional(p) => stmt.query_in(tx, p).map_err(to_py),
                 BindParams::Named(named) => {
-                    tx.query_prepared_named(statement, to_named_params(&named)).map_err(to_py)
+                    stmt.query_named_in(tx, to_named_params(&named)).map_err(to_py)
                 }
             })
         })?;

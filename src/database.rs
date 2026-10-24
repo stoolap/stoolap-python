@@ -157,19 +157,11 @@ impl Database {
 
         // Execute without GIL
         py.allow_threads(|| {
-            use stoolap::parser::Parser;
-            let mut parser = Parser::new(&sql);
-            let program = parser.parse_program().map_err(|e| {
-                crate::error::StoolapError::new_err(e.to_string())
-            })?;
-            let stmt = program.statements.first().ok_or_else(|| {
-                crate::error::StoolapError::new_err("No SQL statement found")
-            })?;
-
+            let stmt = self.db.prepare(&sql).map_err(to_py)?;
             let mut tx = self.db.begin().map_err(to_py)?;
             let mut total = 0i64;
             for params in all_params {
-                total += tx.execute_prepared(stmt, params).map_err(to_py)?;
+                total += stmt.execute_in(&mut tx, params).map_err(to_py)?;
             }
             tx.commit().map_err(to_py)?;
             Ok(total)
@@ -186,7 +178,7 @@ impl Database {
     /// Begin a transaction.
     fn begin(&self, py: Python<'_>) -> PyResult<Transaction> {
         let tx = py.allow_threads(|| self.db.begin().map_err(to_py))?;
-        Ok(Transaction::from_tx(tx))
+        Ok(Transaction::from_tx(tx, Arc::clone(&self.db)))
     }
 
     /// Close the database connection.

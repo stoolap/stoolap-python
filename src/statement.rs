@@ -16,8 +16,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::sync::Arc;
 
-use stoolap::api::Database as ApiDatabase;
-use stoolap::CachedPlanRef;
+use stoolap::api::{Database as ApiDatabase, Statement as ApiStatement};
 
 use crate::database::{first_row_to_dict, rows_to_dicts, rows_to_raw, to_named_params};
 use crate::error::to_py;
@@ -29,22 +28,17 @@ use crate::value::{parse_params, BindParams};
 #[pyclass]
 pub struct PreparedStatement {
     db: Arc<ApiDatabase>,
-    sql_text: String,
-    plan: CachedPlanRef,
+    stmt: ApiStatement,
 }
 
 impl PreparedStatement {
     pub fn new(db: Arc<ApiDatabase>, sql: &str) -> PyResult<Self> {
-        let plan = db.cached_plan(sql).map_err(to_py)?;
-        Ok(Self {
-            db,
-            sql_text: sql.to_string(),
-            plan,
-        })
+        let stmt = db.prepare(sql).map_err(to_py)?;
+        Ok(Self { db, stmt })
     }
 
-    pub(crate) fn plan(&self) -> &CachedPlanRef {
-        &self.plan
+    pub(crate) fn inner(&self) -> &ApiStatement {
+        &self.stmt
     }
 }
 
@@ -54,11 +48,10 @@ impl PreparedStatement {
     #[pyo3(signature = (params=None))]
     fn execute(&self, py: Python<'_>, params: Option<&Bound<'_, PyAny>>) -> PyResult<i64> {
         let bind = parse_params(params)?;
-        let plan = self.plan.clone();
         py.allow_threads(|| match bind {
-            BindParams::Positional(p) => self.db.execute_plan(&plan, p).map_err(to_py),
+            BindParams::Positional(p) => self.stmt.execute(p).map_err(to_py),
             BindParams::Named(named) => {
-                self.db.execute_named_plan(&plan, to_named_params(&named)).map_err(to_py)
+                self.stmt.execute_named(to_named_params(&named)).map_err(to_py)
             }
         })
     }
@@ -67,11 +60,10 @@ impl PreparedStatement {
     #[pyo3(signature = (params=None))]
     fn query(&self, py: Python<'_>, params: Option<&Bound<'_, PyAny>>) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
-        let plan = self.plan.clone();
         let rows = py.allow_threads(|| match bind {
-            BindParams::Positional(p) => self.db.query_plan(&plan, p).map_err(to_py),
+            BindParams::Positional(p) => self.stmt.query(p).map_err(to_py),
             BindParams::Named(named) => {
-                self.db.query_named_plan(&plan, to_named_params(&named)).map_err(to_py)
+                self.stmt.query_named(to_named_params(&named)).map_err(to_py)
             }
         })?;
         rows_to_dicts(py, rows)
@@ -81,11 +73,10 @@ impl PreparedStatement {
     #[pyo3(signature = (params=None))]
     fn query_one(&self, py: Python<'_>, params: Option<&Bound<'_, PyAny>>) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
-        let plan = self.plan.clone();
         let rows = py.allow_threads(|| match bind {
-            BindParams::Positional(p) => self.db.query_plan(&plan, p).map_err(to_py),
+            BindParams::Positional(p) => self.stmt.query(p).map_err(to_py),
             BindParams::Named(named) => {
-                self.db.query_named_plan(&plan, to_named_params(&named)).map_err(to_py)
+                self.stmt.query_named(to_named_params(&named)).map_err(to_py)
             }
         })?;
         first_row_to_dict(py, rows)
@@ -95,11 +86,10 @@ impl PreparedStatement {
     #[pyo3(signature = (params=None))]
     fn query_raw(&self, py: Python<'_>, params: Option<&Bound<'_, PyAny>>) -> PyResult<PyObject> {
         let bind = parse_params(params)?;
-        let plan = self.plan.clone();
         let rows = py.allow_threads(|| match bind {
-            BindParams::Positional(p) => self.db.query_plan(&plan, p).map_err(to_py),
+            BindParams::Positional(p) => self.stmt.query(p).map_err(to_py),
             BindParams::Named(named) => {
-                self.db.query_named_plan(&plan, to_named_params(&named)).map_err(to_py)
+                self.stmt.query_named(to_named_params(&named)).map_err(to_py)
             }
         })?;
         rows_to_raw(py, rows)
@@ -124,15 +114,12 @@ impl PreparedStatement {
             }
         }
 
-        let plan = self.plan.clone();
-
         // Execute without GIL
         py.allow_threads(|| {
-            let stmt = plan.statement.as_ref();
             let mut tx = self.db.begin().map_err(to_py)?;
             let mut total = 0i64;
             for params in all_params {
-                total += tx.execute_prepared(stmt, params).map_err(to_py)?;
+                total += self.stmt.execute_in(&mut tx, params).map_err(to_py)?;
             }
             tx.commit().map_err(to_py)?;
             Ok(total)
@@ -142,10 +129,10 @@ impl PreparedStatement {
     /// Get the SQL text of this prepared statement.
     #[getter]
     fn sql(&self) -> &str {
-        &self.sql_text
+        self.stmt.sql()
     }
 
     fn __repr__(&self) -> String {
-        format!("PreparedStatement({:?})", self.sql_text)
+        format!("PreparedStatement({:?})", self.stmt.sql())
     }
 }
