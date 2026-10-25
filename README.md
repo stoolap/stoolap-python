@@ -55,6 +55,10 @@ raw = db.query_raw("SELECT id, name FROM users ORDER BY id")
 db.close()
 ```
 
+Each `Database.open(":memory:")` is a private database. To share one in-memory database between opens in the same process, give it a name: `Database.open("memory://name")`.
+
+`query()` and `query_one()` key each row by column name, so two result columns with the same name (for example `a.id` and `b.id` in a join) collapse into one key. Alias them, or use `query_raw()`, when that matters.
+
 ## Prepared Statements
 
 Parse SQL once, execute many times with different parameters:
@@ -99,7 +103,7 @@ except:
     raise
 ```
 
-Transactions support `execute()`, `query()`, `query_one()`, `query_raw()`, and `execute_batch()` with both positional (`$1, $2`) and named (`:key`) parameters.
+Transactions support `execute()`, `query()`, `query_one()`, `query_raw()`, and `execute_batch()` with both positional (`$1, $2`) and named (`:key`) parameters. A statement prepared on the database runs inside a transaction with `execute_prepared(stmt, params)`, `query_prepared`, `query_one_prepared` and `query_raw_prepared`. `rollback()` is a no-op once the transaction has ended, so the handler above never hides the original error.
 
 ## Batch Execution
 

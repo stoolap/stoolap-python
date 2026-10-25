@@ -144,11 +144,9 @@ class AsyncTransaction:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
-        if exc_type is not None:
-            await self.rollback()
-        else:
-            await self.commit()
-        return False
+        # Same rules as the sync context manager: commit on clean exit,
+        # rollback on exception, no-op if the block already ended the tx.
+        return await asyncio.to_thread(self._tx.__exit__, exc_type, exc_val, exc_tb)
 
     def __repr__(self) -> str:
         return repr(self._tx)

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use pyo3::prelude::*;
-use pyo3::types::PyList;
 use std::sync::{Arc, Mutex};
 
 use stoolap::api::{Database as ApiDatabase, Transaction as ApiTransaction};
@@ -145,13 +144,14 @@ impl Transaction {
         &self,
         py: Python<'_>,
         sql: &str,
-        params_list: &Bound<'_, PyList>,
+        params_list: &Bound<'_, PyAny>,
     ) -> PyResult<i64> {
         let sql = sql.to_string();
 
         // Parse all param sets while holding GIL
-        let mut all_params = Vec::with_capacity(params_list.len());
-        for item in params_list.iter() {
+        let mut all_params = Vec::with_capacity(params_list.len().unwrap_or(0));
+        for item in params_list.try_iter()? {
+            let item = item?;
             let bind = parse_params(Some(&item))?;
             match bind {
                 BindParams::Positional(p) => all_params.push(p),
@@ -260,30 +260,37 @@ impl Transaction {
     }
 
     /// Commit the transaction.
+    ///
+    /// On failure the transaction stays active so it can still be rolled back.
     fn commit(&self, py: Python<'_>) -> PyResult<()> {
         py.allow_threads(|| {
             let mut guard = self
                 .tx
                 .lock()
                 .map_err(|_| crate::error::StoolapError::new_err("Transaction lock poisoned"))?;
-            let mut tx = guard.take().ok_or_else(|| {
+            let tx = guard.as_mut().ok_or_else(|| {
                 crate::error::StoolapError::new_err("Transaction is no longer active")
             })?;
-            tx.commit().map_err(to_py)
+            tx.commit().map_err(to_py)?;
+            *guard = None;
+            Ok(())
         })
     }
 
     /// Rollback the transaction.
+    ///
+    /// A no-op once the transaction has been committed or rolled back, so an
+    /// `except: tx.rollback(); raise` handler never hides the original error.
     fn rollback(&self, py: Python<'_>) -> PyResult<()> {
         py.allow_threads(|| {
             let mut guard = self
                 .tx
                 .lock()
                 .map_err(|_| crate::error::StoolapError::new_err("Transaction lock poisoned"))?;
-            let mut tx = guard.take().ok_or_else(|| {
-                crate::error::StoolapError::new_err("Transaction is no longer active")
-            })?;
-            tx.rollback().map_err(to_py)
+            if let Some(mut tx) = guard.take() {
+                tx.rollback().map_err(to_py)?;
+            }
+            Ok(())
         })
     }
 

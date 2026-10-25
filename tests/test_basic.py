@@ -24,6 +24,41 @@ def test_open_memory():
     db.close()
 
 
+def test_open_defaults_to_memory():
+    db = Database.open()
+    db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+    assert db.query("SELECT * FROM t") == []
+    db.close()
+
+
+def test_memory_databases_are_private():
+    a = Database.open(":memory:")
+    b = Database.open(":memory:")
+    a.exec("CREATE TABLE only_in_a (id INTEGER PRIMARY KEY)")
+
+    with pytest.raises(StoolapError):
+        b.query("SELECT * FROM only_in_a")
+
+    b.close()
+    assert a.query("SELECT * FROM only_in_a") == []  # a outlives b.close()
+    a.close()
+
+
+def test_named_memory_database_is_shared():
+    a = Database.open("memory://shared-by-name")
+    b = Database.open("memory://shared-by-name")
+    a.exec("CREATE TABLE shared (id INTEGER PRIMARY KEY)")
+    assert b.query("SELECT * FROM shared") == []
+    a.close()
+
+
+def test_unknown_scheme_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(StoolapError, match="Unsupported scheme"):
+        Database.open("sqlite:///tmp/x")
+    assert list(tmp_path.iterdir()) == []  # no 'sqlite:' directory created
+
+
 def test_open_empty_string():
     db = Database.open("")
     assert db is not None

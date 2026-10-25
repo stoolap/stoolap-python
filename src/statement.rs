@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use pyo3::prelude::*;
-use pyo3::types::PyList;
 use std::sync::Arc;
 
 use stoolap::api::{Database as ApiDatabase, Statement as ApiStatement};
@@ -99,10 +98,11 @@ impl PreparedStatement {
     ///
     /// Auto-wraps in a transaction. Returns total rows affected.
     #[pyo3(signature = (params_list,))]
-    fn execute_batch(&self, py: Python<'_>, params_list: &Bound<'_, PyList>) -> PyResult<i64> {
+    fn execute_batch(&self, py: Python<'_>, params_list: &Bound<'_, PyAny>) -> PyResult<i64> {
         // Parse all param sets while holding GIL
-        let mut all_params = Vec::with_capacity(params_list.len());
-        for item in params_list.iter() {
+        let mut all_params = Vec::with_capacity(params_list.len().unwrap_or(0));
+        for item in params_list.try_iter()? {
+            let item = item?;
             let bind = parse_params(Some(&item))?;
             match bind {
                 BindParams::Positional(p) => all_params.push(p),

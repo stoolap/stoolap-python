@@ -126,3 +126,26 @@ def test_tx_positional_params():
     assert rows[0]["name"] == "Alice"
     assert rows[1]["name"] == "Bob"
     db.close()
+
+
+def test_rollback_is_idempotent():
+    db = Database.open(":memory:")
+    db.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+
+    tx = db.begin()
+    tx.execute("INSERT INTO users VALUES ($1, $2)", [1, "Alice"])
+    tx.rollback()
+    tx.rollback()  # second rollback is a no-op
+    assert db.query("SELECT * FROM users") == []
+
+    # rollback after commit is a no-op too, so the documented
+    # `except: tx.rollback(); raise` pattern never hides the real error
+    tx = db.begin()
+    tx.execute("INSERT INTO users VALUES ($1, $2)", [1, "Alice"])
+    tx.commit()
+    tx.rollback()
+    assert len(db.query("SELECT * FROM users")) == 1
+
+    with pytest.raises(StoolapError, match="no longer active"):
+        tx.commit()
+    db.close()

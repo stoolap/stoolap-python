@@ -131,3 +131,31 @@ async def test_async_execute_batch():
     rows = await db.query("SELECT * FROM users ORDER BY id")
     assert len(rows) == 3
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_async_manual_commit_inside_context():
+    db = await AsyncDatabase.open(":memory:")
+    await db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+
+    async with await db.begin() as tx:
+        await tx.execute("INSERT INTO t VALUES ($1)", [1])
+        await tx.commit()  # leaving the block afterwards must not raise
+
+    assert len(await db.query("SELECT * FROM t")) == 1
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_async_rollback_then_raise_keeps_original_error():
+    db = await AsyncDatabase.open(":memory:")
+    await db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+
+    with pytest.raises(ValueError, match="boom"):
+        async with await db.begin() as tx:
+            await tx.execute("INSERT INTO t VALUES ($1)", [1])
+            await tx.rollback()
+            raise ValueError("boom")
+
+    assert await db.query("SELECT * FROM t") == []
+    await db.close()

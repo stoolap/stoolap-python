@@ -14,6 +14,7 @@
 
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use stoolap::api::Database as ApiDatabase;
@@ -36,13 +37,14 @@ impl Database {
     /// Open a database connection.
     ///
     /// Accepts:
-    /// - `:memory:` or empty string for in-memory database
-    /// - `memory://` for in-memory database
+    /// - `:memory:` or empty string for a private in-memory database
+    /// - `memory://name` for an in-memory database shared by every open of that name
     /// - `./mydb` or `file:///path/to/db` for file-based database
     #[staticmethod]
-    fn open(path: &str) -> PyResult<Self> {
+    #[pyo3(signature = (path=":memory:"))]
+    fn open(py: Python<'_>, path: &str) -> PyResult<Self> {
         let dsn = translate_path(path);
-        let db = ApiDatabase::open(&dsn).map_err(to_py)?;
+        let db = py.allow_threads(|| ApiDatabase::open(&dsn)).map_err(to_py)?;
         Ok(Self { db: Arc::new(db) })
     }
 
@@ -137,13 +139,14 @@ impl Database {
         &self,
         py: Python<'_>,
         sql: &str,
-        params_list: &Bound<'_, PyList>,
+        params_list: &Bound<'_, PyAny>,
     ) -> PyResult<i64> {
         let sql = sql.to_string();
 
         // Parse all param sets on the Python thread (need GIL)
-        let mut all_params = Vec::with_capacity(params_list.len());
-        for item in params_list.iter() {
+        let mut all_params = Vec::with_capacity(params_list.len().unwrap_or(0));
+        for item in params_list.try_iter()? {
+            let item = item?;
             let bind = parse_params(Some(&item))?;
             match bind {
                 BindParams::Positional(p) => all_params.push(p),
@@ -171,8 +174,8 @@ impl Database {
     /// Create a prepared statement.
     ///
     /// Parses SQL once and caches the execution plan.
-    fn prepare(&self, sql: &str) -> PyResult<PreparedStatement> {
-        PreparedStatement::new(Arc::clone(&self.db), sql)
+    fn prepare(&self, py: Python<'_>, sql: &str) -> PyResult<PreparedStatement> {
+        py.allow_threads(|| PreparedStatement::new(Arc::clone(&self.db), sql))
     }
 
     /// Begin a transaction.
@@ -192,14 +195,36 @@ impl Database {
 }
 
 /// Translate user-friendly paths to Stoolap DSN format.
+///
+/// `:memory:` gets a DSN unique to this open, so two `:memory:` databases in
+/// one process never share tables and closing one leaves the other open.
+/// Anything that already carries a scheme is passed through untouched and
+/// left to the engine to validate; a bare path becomes `file://path`.
 fn translate_path(path: &str) -> String {
+    static MEMORY_OPENS: AtomicU64 = AtomicU64::new(0);
+
     let trimmed = path.trim();
     if trimmed.is_empty() || trimmed == ":memory:" {
-        "memory://".to_string()
-    } else if trimmed.starts_with("memory://") || trimmed.starts_with("file://") {
+        let n = MEMORY_OPENS.fetch_add(1, Ordering::Relaxed);
+        format!("memory://py-{}-{n}", std::process::id())
+    } else if has_scheme(trimmed) {
         trimmed.to_string()
     } else {
         format!("file://{trimmed}")
+    }
+}
+
+/// True when `s` starts with an RFC 3986 scheme followed by `://`.
+fn has_scheme(s: &str) -> bool {
+    match s.find("://") {
+        Some(idx) if idx > 0 => {
+            let scheme = &s[..idx];
+            scheme.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        }
+        _ => false,
     }
 }
 

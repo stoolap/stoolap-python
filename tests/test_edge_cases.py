@@ -287,3 +287,19 @@ async def test_async_tx_rollback_on_exception():
     rows = await db.query("SELECT * FROM t")
     assert len(rows) == 0
     await db.close()
+
+
+def test_execute_batch_accepts_any_iterable():
+    db = Database.open(":memory:")
+    db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+
+    assert db.execute_batch("INSERT INTO t VALUES ($1, $2)", ((1, "a"), (2, "b"))) == 2
+
+    stmt = db.prepare("INSERT INTO t VALUES ($1, $2)")
+    assert stmt.execute_batch(row for row in [(3, "c"), (4, "d")]) == 2
+
+    with db.begin() as tx:
+        assert tx.execute_batch("INSERT INTO t VALUES ($1, $2)", ((5, "e"),)) == 1
+
+    assert len(db.query("SELECT * FROM t")) == 5
+    db.close()
