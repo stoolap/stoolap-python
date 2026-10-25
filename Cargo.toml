@@ -17,7 +17,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 stoolap = { git = "https://github.com/stoolap/stoolap", branch = "main", default-features = false, features = ["parallel"] }
-pyo3 = { version = "0.23", features = ["extension-module"] }
+pyo3 = { version = "0.23", features = ["extension-module", "generate-import-lib"] }
 chrono = "0.4"
 
 [profile.release]
