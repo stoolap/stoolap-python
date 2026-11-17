@@ -16,7 +16,7 @@ name = "_stoolap"
 crate-type = ["cdylib"]
 
 [dependencies]
-stoolap = { version = "0.5.0", default-features = false, features = ["parallel"] }
+stoolap = { version = "0.5.0", default-features = false, features = ["parallel", "jemalloc"] }
 pyo3 = { version = "0.23", features = ["extension-module", "generate-import-lib"] }
 chrono = "0.4"
 
