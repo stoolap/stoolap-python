@@ -699,12 +699,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b74b56ffa8bb2830709a538c2cbcae9aa062db0d2a42563bfb09bdaae44020eb"
 
 [[package]]
-name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -815,9 +809,9 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "stoolap"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3766221eabe72eb6675091a2cc1ed6d019bdf9942cecb205ac87f6103a7e3837"
+checksum = "0882476f585354fb4724001d370ca92aff8d4ce2502438726e0c50f982c3323e"
 dependencies = [
  "ahash",
  "chrono",
@@ -837,7 +831,6 @@ dependencies = [
  "rayon",
  "regex",
  "roaring",
- "rustc-hash",
  "serde",
  "serde_json",
  "sha1",
@@ -853,9 +846,9 @@ dependencies = [
 
 [[package]]
 name = "stoolap-jemalloc"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "686a6d083a8743ab9f88ddc1240c4619345fd90a9d32491102f29b878378a51b"
+checksum = "775ad052d82e2e6c076e64bd6908996c0ae0a86897c04f4bcfa52f721317f548"
 dependencies = [
  "backtrace",
  "libc",
@@ -864,7 +857,7 @@ dependencies = [
 
 [[package]]
 name = "stoolap-python"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "chrono",
  "pyo3",
